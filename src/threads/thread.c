@@ -54,6 +54,8 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
+#define maxDepthLayer 7;         /* Es el maximo depth que se tendra en el test case de priority donate chain*/
+
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -90,7 +92,7 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
-  list_init (&ready_list);
+  list_init (&ready_list);  
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -171,6 +173,7 @@ thread_create (const char *name, int priority,
   struct switch_entry_frame *ef;
   struct switch_threads_frame *sf;
   tid_t tid;
+  enum intr_level old_level;
 
   ASSERT (function != NULL);
 
@@ -200,6 +203,18 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+
+  //Se deshabilita interrupcciones
+  old_level = intr_disable();
+
+    //Current running thread
+  struct thread *currentT = thread_current();
+  //Compara las prioridades para saber si ceder el CPU al nuevo thread en creación.
+  if (currentT->priority < t->priority){
+      thread_yield();
+  }
+
+  intr_set_level(old_level);
 
   return tid;
 }
@@ -237,7 +252,9 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  //list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list,&t->elem,priorityCompareTATB,NULL);/*Inserta en la lista por
+                                                                           orden de prioridad*/
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -296,19 +313,36 @@ thread_exit (void)
   NOT_REACHED ();
 }
 
+/*---------------------------------------------------------------------------------------------------*/
+/*En list.c en la definición de la funcion list_insert_ordered() se pide una función bool que compare
+  dos elementos, en el caso de thread_yield() se debe comparar el thread que se quiere volver a meter a la lista
+  de los thread en estado ready, con todos los demas elementos que están en dicha lista ordenando por orden de
+  prioridad*/
+bool 
+priorityCompareTATB(const struct list_elem *a,const struct list_elem *b,
+                      void *aux UNUSED){
+  //Devuelve falso si la prioridad del thread A es menor que la del thread B.
+  return (list_entry(a,struct thread,elem)->priority) > (list_entry(b,struct thread,elem)->priority);
+}
+/*---------------------------------------------------------------------------------------------------*/
+
+
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void
 thread_yield (void) 
 {
   struct thread *cur = thread_current ();
-  enum intr_level old_level;
+  enum intr_level old_level;  
   
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    //list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list,&cur->elem,priorityCompareTATB,NULL);/*Inserta en la lista por
+                                                                           orden de prioridad*/
+    
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -332,10 +366,15 @@ thread_foreach (thread_action_func *func, void *aux)
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
+
 void
 thread_set_priority (int new_priority) 
 {
+  enum intr_level old_level;
+  old_level = intr_disable();
   thread_current ()->priority = new_priority;
+  checkMaxCurrentT();
+  intr_set_level(old_level);
 }
 
 /* Returns the current thread's priority. */
@@ -344,6 +383,32 @@ thread_get_priority (void)
 {
   return thread_current ()->priority;
 }
+
+/* --------------------------------------------------------------------------------------------------- */
+/*Función que decide si se hace yield() al CPU basandose en la ready list y current thread*/
+void
+checkMaxCurrentT(void){
+
+  if(!(list_empty(&ready_list))){
+    //Prioridad del primer elemento en la ready list
+    int priori = list_entry(list_front(&ready_list),struct thread,elem)->priority; 
+    //Prioridad del current running thread
+    int curPriori = thread_current()->priority; //
+    /*Se compara la prioridad del current thread con la del primero en la ready list para saber si hacer 
+    yield del CPU o no*/
+    if(priori > curPriori)
+      thread_yield();
+  }
+}
+
+/*Implementa priority scheduling y donación de prioridad*/
+void
+priorityDonation (void) 
+{
+  struct thread *thactual = thread_current();
+  //struct lock *lck = thactual->waitingLock;
+}
+/* --------------------------------------------------------------------------------------------------- */
 
 /* Sets the current thread's nice value to NICE. */
 void
@@ -375,7 +440,7 @@ thread_get_recent_cpu (void)
   /* Not yet implemented. */
   return 0;
 }
-
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -424,7 +489,7 @@ kernel_thread (thread_func *function, void *aux)
   function (aux);       /* Execute the thread function. */
   thread_exit ();       /* If function() returns, kill the thread. */
 }
-
+
 /* Returns the running thread. */
 struct thread *
 running_thread (void) 
@@ -462,11 +527,19 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  /* Nuevos campos para Priority Donation*/
+  //--------------------------------------
+  t->priorityInit = priority;
+  list_init(&t->holdingLocks);
+  t->waitingLock = NULL;
+  list_init(&t->donantes);
+  //--------------------------------------- 
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -578,7 +651,7 @@ allocate_tid (void)
 
   return tid;
 }
-
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
