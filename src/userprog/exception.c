@@ -1,9 +1,20 @@
 #include "userprog/exception.h"
 #include <inttypes.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "threads/palloc.h"
+#include "userprog/pagedir.h"
+#include "userprog/syscall.h"
+#include "vm/pageTable.h"
+#include "vm/frameTable.h"
+
+//Install a new page
+static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -81,6 +92,7 @@ kill (struct intr_frame *f)
      
   /* The interrupt frame's code segment value tells us where the
      exception originated. */
+
   switch (f->cs)
     {
     case SEL_UCSEG:
@@ -108,6 +120,7 @@ kill (struct intr_frame *f)
     }
 }
 
+
 /* Page fault handler.  This is a skeleton that must be filled in
    to implement virtual memory.  Some solutions to project 2 may
    also require modifying this code.
@@ -124,7 +137,7 @@ page_fault (struct intr_frame *f)
 {
   bool not_present;  /* True: not-present page, false: writing r/o page. */
   bool write;        /* True: access was write, false: access was read. */
-  bool user;         /* True: access by user, false: access by kernel. */
+  bool user;         /* True: access by user, false : access by kernel. */
   void *fault_addr;  /* Fault address. */
 
   /* Obtain faulting address, the virtual address that was
@@ -148,6 +161,31 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+//----------------------------- My Solution ------------------------------------------//
+
+  //Si la virtual address es null pointer, una kernel address, y write violation
+  if(fault_addr == NULL || !not_present || !is_user_vaddr(fault_addr) 
+    || (fault_addr < USER_VADDR))
+    syscall_exit(-1);
+  
+  //Round down the fault address to nearest page boundary.
+  void* upage = pg_round_down(fault_addr);
+  //If the page not present, we allocate a new page
+  if (!not_present){
+    //Se verifica que el fault address este en user space
+    if(fault_addr >= (f->esp - 32) && fault_addr < PHYS_BASE){
+      //Se obtiene un nuevo frame o kernel page 
+      void* kpage = get_pageFT(PAL_USER | PAL_ZERO);
+      bool writable = true;
+      //Se instala el frame como una página en el page dir. de el thread actual
+      bool success = install_page (upage, kpage, writable); //Growth Stack
+      if(!success)
+        free_frameTable(kpage); 
+      return; 
+    }
+  }
+//-----------------------------------------------------------------------------------//
+
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
@@ -159,3 +197,22 @@ page_fault (struct intr_frame *f)
   kill (f);
 }
 
+/* Adds a mapping from user virtual address UPAGE to kernel
+   virtual address KPAGE to the page table.
+   If WRITABLE is true, the user process may modify the page;
+   otherwise, it is read-only.
+   UPAGE must not already be mapped.
+   KPAGE should probably be a page obtained from the user pool
+   with palloc_get_page().
+   Returns true on success, false if UPAGE is already mapped or
+   if memory allocation fails. */
+static bool
+install_page (void *upage, void *kpage, bool writable)
+{
+  struct thread *t = thread_current ();
+
+  /* Verify that there's not already a page at that virtual
+     address, then map our page there. */
+  return (pagedir_get_page (t->pagedir, upage) == NULL
+          && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}

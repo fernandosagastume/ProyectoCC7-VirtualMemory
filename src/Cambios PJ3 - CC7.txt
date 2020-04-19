@@ -1,0 +1,9 @@
+Cambios PJ3 - CC7:
+
+//------------------------------------- Stack Growth -------------------------------------------------//
+	
+* Se agregó una constante ----> #define USER_VADDR ((void *) 0x08048000), indica el bottom user valid address. Definida en userprog/exception.h
+* Se agregó una constante ----> #define LIM_STACK ((void *) 0x40000000), indica el stack limit address. Definida en userprog/exception.h
+* Se agregó en threads/init.c, la incialización de la struct list frame_table y otras estructuras definidas en vm/frameTable.h
+
+//------------------------------------- Stack Growth -------------------------------------------------//

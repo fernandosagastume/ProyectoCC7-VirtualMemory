@@ -25,6 +25,7 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/exception.h"
+#include "vm/frameTable.h"
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
 #include "userprog/tss.h"
@@ -113,6 +114,8 @@ pintos_init (void)
 #ifdef USERPROG
   exception_init ();
   syscall_init ();
+  //Se incializan estructuras para la frame table
+  init_frameTable();
 #endif
 
   /* Start thread scheduler and enable interrupts. */

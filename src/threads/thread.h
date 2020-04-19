@@ -98,6 +98,15 @@ struct thread
     struct list_elem donantesElem;      /*Sirve para iterar en la lista de donantes*/
     struct lock *waitingLock;           /*El lock que esta siendo esperado por el thread para donación*/
     //-------------------------------------------------------------------------------------------------------------------//
+    
+    //-------------------------------------------------------------------------------------------------------------------//
+    //Implementaciones para el proyecto 2 
+
+    int fdSZ;                            /*file descriptor size*/
+    struct list fdList;                 /*Una lista con los file descriptors del thread actual*/ 
+    
+    //-------------------------------------------------------------------------------------------------------------------//
+
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
@@ -133,7 +142,7 @@ struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
 
-void thread_exit (void) NO_RETURN;
+void thread_exit (void) NO_RETURN; 
 void thread_yield (void);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
@@ -144,7 +153,9 @@ int thread_get_priority (void);
 void thread_set_priority (int);
 /*------------------------------------------------------------------------*/
 /*Funciones principal para donación de prioridad*/
-void priorityDonation(void); //Implementa donación de priridad
+void priorityDonation(struct thread* threadholder, int donation); //Implementa donación de priridad
+void shakeUpReadyList(struct thread *thd); ////Función que reordena la ready list en caso de que haya thread holder este en la ready list
+void priorityDonationInverse(struct thread *currT, struct lock *lock); //Devuelve la donación una vez hace release del lock
 void checkMaxCurrentT(void); //Función que decide si se hace yield() al CPU
 bool priorityCompareTATB(const struct list_elem *a, const struct list_elem *b,void *aux UNUSED); /*Función utilizada 
 para ordenar listas*/
