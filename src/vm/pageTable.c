@@ -6,42 +6,37 @@
 #include <list.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
+#include "lib/kernel/hash.h"
 
-/*struct list_elem *find_spte(void *fault_addr){
-  void *upage = pg_round_down(fault_addr);
-  struct list_elem *e;
-  for(e = list_begin(&thread_current()->sup_page_table);
-      e != list_end(&thread_current()->sup_page_table);
-      e = list_next(e))
-  {
-    if(list_entry(e,struct spt_elem,elem)->user_page == upage)
-      return e;
-  }
-  return NULL;
+
+unsigned SPTE_hash (const struct hash_elem* e, void *aux UNUSED){
+  struct sup_page_table_entry* SPTE;
+  SPTE = hash_entry(e, struct sup_page_table_entry, spte_elem);
+  unsigned hash_value = hash_bytes (&SPTE->user_vaddr, sizeof &SPTE->user_vaddr);
+  return hash_value;
 }
 
+bool SPTE_less (const struct hash_elem* a,
+                const struct hash_elem* b,
+                void* aux UNUSED){
+  const struct sup_page_table_entry* spte_a;
+  spte_a = hash_entry (a, struct sup_page_table_entry, spte_elem);
+  const struct sup_page_table_entry* spte_b;
+  spte_b = hash_entry (b, struct sup_page_table_entry, spte_elem);
+  return spte_a->user_vaddr < spte_b->user_vaddr;
+}
 
-bool load_from_file(struct spt_elem *spte){
-    /* Get a page of memory. */
-  /*uint8_t *kpage = palloc_get_page (PAL_USER);
-  if (kpage == NULL){
-    return false;
-  }
-      
-
-    /* Load this page. */
-  /*if (file_read_at (spte->file, kpage, spte->read_bytes, spte->ofs) != (int) spte->read_bytes){
-    palloc_free_page (kpage);
-    return false; 
-  }
-  memset (kpage + spte->read_bytes, 0, spte->zero_bytes);
-      
-
-    /* Add the page to the process's address space. */
- /* if (!install_page (spte->user_page, kpage, spte->writable)){
-    palloc_free_page (kpage);
-    return false; 
-  }
-  spte->is_load = 1;
-  return true;
-}*/
+struct sup_page_table_entry* 
+get_SPTE(void* user_vaddr, struct hash* hash_table){
+  struct sup_page_table_entry SPTE;
+  //La key de la hash_table (user_vaddr) se guarda en la spte
+  SPTE.user_vaddr = user_vaddr;
+  struct hash_elem* h = &SPTE.spte_elem;
+  //Se busca en la hash table un spte asociado
+  struct hash_elem* element = hash_find(hash_table, h);
+  if(element)
+    return hash_entry(element, struct sup_page_table_entry, spte_elem);
+  else
+    return NULL;
+}

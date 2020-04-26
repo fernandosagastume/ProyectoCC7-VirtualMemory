@@ -18,6 +18,9 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/frameTable.h"
+#include "vm/pageTable.h"
+#include "lib/kernel/hash.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -57,6 +60,10 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
+  
+  struct thread* curr = thread_current();
+  //Se incializa la hash table con la supplemental page table de cada proceso
+  hash_init (&curr->SPT, SPTE_hash, SPTE_less, NULL);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -220,7 +227,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
-
+  struct thread *curr = thread_current();
   char *exec_name;
   int len = strlen(file_name);
   char *copy = malloc(len + 1); 
@@ -228,13 +235,19 @@ load (const char *file_name, void (**eip) (void), void **esp)
   strlcpy (copy, file_name, lent+1);
   exec_name = strtok_r(copy, " ", &copy);
 
+  /* Allocate and activate page directory. */
+  curr->pagedir = pagedir_create ();
+  if (curr->pagedir == NULL)
+    goto done;
+  process_activate ();
+
   /* Open executable file. */
   file = filesys_open (exec_name);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", exec_name);
       goto done; 
-    }
+    } 
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -405,14 +418,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
+      uint8_t *kpage = get_pageFT(PAL_USER);
       if (kpage == NULL)
         return false;
 
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
-          palloc_free_page (kpage);
+          free_frameTable(kpage);
           return false; 
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
@@ -420,7 +433,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable)) 
         {
-          palloc_free_page (kpage);
+          free_frameTable(kpage);
           return false; 
         }
 
@@ -440,14 +453,14 @@ setup_stack (const char * file_name,void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = get_pageFT(PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
       else
-        palloc_free_page (kpage);
+        free_frameTable(kpage);
     }
 
 

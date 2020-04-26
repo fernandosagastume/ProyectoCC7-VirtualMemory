@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "lib/kernel/hash.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -105,6 +106,15 @@ struct thread
     int fdSZ;                            /*file descriptor size*/
     struct list fdList;                 /*Una lista con los file descriptors del thread actual*/ 
     
+    //-------------------------------------------------------------------------------------------------------------------//
+
+    //-------------------------------------------------------------------------------------------------------------------//
+    //Implementaciones para el proyecto 3
+
+    /*Campo el cual es usado para asociar una supplemental page table 
+      representado como una hash table.*/
+    struct hash SPT;
+
     //-------------------------------------------------------------------------------------------------------------------//
 
     struct list_elem allelem;           /* List element for all threads list. */

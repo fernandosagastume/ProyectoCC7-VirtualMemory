@@ -5,6 +5,8 @@
 #include "threads/init.h"
 #include "threads/pte.h"
 #include "threads/palloc.h"
+#include "threads/pte.h"
+#include "vm/frameTable.h"
 
 static uint32_t *active_pd (void);
 static void invalidate_pagedir (uint32_t *);
@@ -41,10 +43,10 @@ pagedir_destroy (uint32_t *pd)
         
         for (pte = pt; pte < pt + PGSIZE / sizeof *pte; pte++)
           if (*pte & PTE_P) 
-            palloc_free_page (pte_get_page (*pte));
-        palloc_free_page (pt);
+            free_frameTable(pte_get_page (*pte));
+        free_frameTable(pt);
       }
-  palloc_free_page (pd);
+  free_frameTable(pd);
 }
 
 /* Returns the address of the page table entry for virtual
@@ -112,6 +114,8 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
     {
       ASSERT ((*pte & PTE_P) == 0);
       *pte = pte_create_user (kpage, writable);
+      //Se guarda la pte y upage en el frame table entry
+      getPTEandUvaddr(kpage,upage,pte);
       return true;
     }
   else

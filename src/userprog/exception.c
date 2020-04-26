@@ -161,17 +161,19 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-//----------------------------- My Solution ------------------------------------------//
+//----------------------------- Our Solution ------------------------------------------//
 
-  //Si la virtual address es null pointer, una kernel address, y write violation
+  //Si la fault address es null pointer, una kernel address, y write violation
   if(fault_addr == NULL || !not_present || !is_user_vaddr(fault_addr) 
     || (fault_addr < USER_VADDR))
     syscall_exit(-1);
   
+  //struct sup_page_table_entry* SPTE = get_SPTE();
+
   //Round down the fault address to nearest page boundary.
   void* upage = pg_round_down(fault_addr);
   //If the page not present, we allocate a new page
-  if (!not_present){
+  if (not_present){
     //Se verifica que el fault address este en user space
     if(fault_addr >= (f->esp - 32) && fault_addr < PHYS_BASE){
       //Se obtiene un nuevo frame o kernel page 
@@ -179,13 +181,22 @@ page_fault (struct intr_frame *f)
       bool writable = true;
       //Se instala el frame como una página en el page dir. de el thread actual
       bool success = install_page (upage, kpage, writable); //Growth Stack
-      if(!success)
+      if(!success){
         free_frameTable(kpage); 
-      return; 
+        return; 
+      }
     }
   }
-//-----------------------------------------------------------------------------------//
+  else{
+    syscall_exit(-1);
+  }
 
+//-----------------------------------------------------------------------------------//
+  struct thread* curr = thread_current();
+
+  if(!pagedir_get_page (curr->pagedir, fault_addr)){
+    syscall_exit (-1);
+  }
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
